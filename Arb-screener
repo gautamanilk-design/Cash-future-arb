@@ -3,27 +3,27 @@ import pandas as pd
 import datetime as dt
 
 # ----------------------------
-# Load NSE Bhavcopy (CSV)
+# Load Data
 # ----------------------------
-# NSE publishes daily EOD bhavcopy for equities & derivatives
-# Example: https://www.nseindia.com/all-reports-derivatives
-# For demo, assume we have uploaded bhavcopy CSVs in same repo
-# eq_bhav.csv  = equity spot prices
-# fo_bhav.csv  = futures prices
-
 @st.cache_data
 def load_data():
-    eq = pd.read_csv("eq_bhav.csv")   # equity EOD
-    fo = pd.read_csv("fo_bhav.csv")   # futures EOD
-    return eq, fo
+    eq = pd.read_csv("eq_bhav.csv")   # equity spot prices
+    fo = pd.read_csv("fo_bhav.csv")   # futures prices
+    fno = pd.read_csv("fno_list.csv") # allowed F&O securities
+    return eq, fo, fno
 
 st.set_page_config(page_title="Cash-Futures Arbitrage Screener", layout="wide")
-st.title("📊 Cash–Futures Arbitrage Screener (EOD Data)")
+st.title("📊 Cash–Futures Arbitrage Screener (EOD, F&O Only)")
 
 today = dt.date.today()
 st.write(f"**Date:** {today}")
 
-eq, fo = load_data()
+eq, fo, fno = load_data()
+
+# Keep only F&O symbols
+fno_symbols = fno["SYMBOL"].unique()
+eq = eq[eq["SYMBOL"].isin(fno_symbols)]
+fo = fo[fo["SYMBOL"].isin(fno_symbols)]
 
 # Filter near-month futures only
 near_month = fo.groupby("SYMBOL")["EXPIRY_DT"].min().reset_index()
@@ -54,4 +54,5 @@ if results:
     df = pd.DataFrame(results).sort_values(by="ArbYield%", ascending=False)
     st.dataframe(df, use_container_width=True)
 else:
-    st.warning("Upload bhavcopy CSV files (eq_bhav.csv and fo_bhav.csv) to repo.")
+    st.warning("No valid arbitrage data available. Check bhavcopy files.")
+
