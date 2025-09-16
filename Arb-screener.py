@@ -1,0 +1,57 @@
+import streamlit as st
+import pandas as pd
+import datetime as dt
+
+# ----------------------------
+# Load Data
+# ----------------------------
+@st.cache_data
+def load_data():
+    eq = pd.read_csv("eq_bhav.csv")   # equity spot prices
+    fo = pd.read_csv("fo_bhav.csv")   # futures prices
+    fno = pd.read_csv("fno_list.csv") # allowed F&O securities
+    return eq, fo, fno
+
+st.set_page_config(page_title="Cash-Futures Arbitrage Screener", layout="wide")
+st.title("📊 Cash–Futures Arbitrage Screener (EOD, F&O Only)")
+
+today = dt.date.today()
+st.write(f"**Date:** {today}")
+
+eq, fo, fno = load_data()
+
+# Keep only F&O symbols
+fno_symbols = fno["SYMBOL"].unique()
+eq = eq[eq["SYMBOL"].isin(fno_symbols)]
+fo = fo[fo["SYMBOL"].isin(fno_symbols)]
+
+# Filter near-month futures only
+near_month = fo.groupby("SYMBOL")["EXPIRY_DT"].min().reset_index()
+fo = fo.merge(near_month, on=["SYMBOL","EXPIRY_DT"])
+
+results = []
+
+for s in eq["SYMBOL"].unique():
+    try:
+        spot_price = eq.loc[eq["SYMBOL"] == s, "CLOSE_PRICE"].values[0]
+        fut_price  = fo.loc[fo["SYMBOL"] == s, "CLOSE"].values[0]
+
+        expiry = pd.to_datetime(fo.loc[fo["SYMBOL"] == s, "EXPIRY_DT"].values[0]).date()
+        days_to_expiry = max(1, (expiry - today).days)
+
+        arb_yield = ((fut_price - spot_price) / spot_price) * (365 / days_to_expiry) * 100
+
+        results.append({
+            "Stock": s,
+            "Spot": round(spot_price, 2),
+            "Futures": round(fut_price, 2),
+            "ArbYield%": round(arb_yield, 2)
+        })
+    except:
+        continue
+
+if results:
+    df = pd.DataFrame(results).sort_values(by="ArbYield%", ascending=False)
+    st.dataframe(df, use_container_width=True)
+else:
+    st.warning("No valid arbitrage data available. Check bhavcopy files.")
